@@ -1,11 +1,11 @@
 package ru.yandex.practicum.telemetry.collector.service;
 
 import org.springframework.stereotype.Service;
+import ru.yandex.practicum.grpc.telemetry.event.SensorEventProto;
 import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
-import ru.yandex.practicum.telemetry.collector.dto.sensor.SensorEvent;
-import ru.yandex.practicum.telemetry.collector.dto.sensor.SensorEventType;
 import ru.yandex.practicum.telemetry.collector.service.handler.sensor.SensorEventHandler;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -13,7 +13,7 @@ import java.util.stream.Collectors;
 
 @Service
 public class SensorEventMapper {
-    private final Map<SensorEventType, SensorEventHandler> handlers;
+    private final Map<SensorEventProto.PayloadCase, SensorEventHandler> handlers;
 
     public SensorEventMapper(List<SensorEventHandler> handlerList) {
         this.handlers = handlerList.stream()
@@ -23,19 +23,24 @@ public class SensorEventMapper {
                 ));
     }
 
-    public SensorEventAvro toAvro(SensorEvent event) {
-        SensorEventHandler handler = handlers.get(event.getType());
+    public SensorEventAvro toAvro(SensorEventProto event) {
+        SensorEventHandler handler = handlers.get(event.getPayloadCase());
 
         if (handler == null) {
-            throw new IllegalArgumentException("Не найден обработчик для типа события датчика: " + event.getType());
+            throw new IllegalArgumentException("Не найден обработчик для типа события датчика: " + event.getPayloadCase());
         }
 
         Object payload = handler.handlePayload(event);
 
+        Instant timestamp = Instant.ofEpochSecond(
+                event.getTimestamp().getSeconds(),
+                event.getTimestamp().getNanos()
+        );
+
         return SensorEventAvro.newBuilder()
                 .setId(event.getId())
                 .setHubId(event.getHubId())
-                .setTimestamp(event.getTimestamp())
+                .setTimestamp(timestamp)
                 .setPayload(payload)
                 .build();
     }

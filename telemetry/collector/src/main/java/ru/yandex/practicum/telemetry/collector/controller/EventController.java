@@ -1,16 +1,18 @@
 package ru.yandex.practicum.telemetry.collector.controller;
 
-import jakarta.validation.Valid;
+import com.google.protobuf.Empty;
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
+import io.grpc.stub.StreamObserver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.avro.specific.SpecificRecordBase;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import ru.yandex.practicum.telemetry.collector.dto.hub.HubEvent;
-import ru.yandex.practicum.telemetry.collector.dto.sensor.SensorEvent;
+import ru.yandex.practicum.grpc.telemetry.collector.CollectorControllerGrpc;
+import ru.yandex.practicum.grpc.telemetry.event.HubEventProto;
+import ru.yandex.practicum.grpc.telemetry.event.SensorEventProto;
 import ru.yandex.practicum.telemetry.collector.service.HubEventMapper;
 import ru.yandex.practicum.telemetry.collector.service.SensorEventMapper;
 
@@ -18,7 +20,7 @@ import ru.yandex.practicum.telemetry.collector.service.SensorEventMapper;
 @RestController
 @RequestMapping("/events")
 @RequiredArgsConstructor
-public class EventController {
+public class EventController extends CollectorControllerGrpc.CollectorControllerImplBase {
     private final KafkaTemplate<String, SpecificRecordBase> kafkaTemplate;
     private final SensorEventMapper sensorEventMapper;
     private final HubEventMapper hubEventMapper;
@@ -26,21 +28,47 @@ public class EventController {
     private static final String SENSORS_TOPIC = "telemetry.sensors.v1";
     private static final String HUBS_TOPIC = "telemetry.hubs.v1";
 
-    @PostMapping("/sensors")
-    public void collectSensorEvent(@Valid @RequestBody SensorEvent event) {
-        var avroEvent = sensorEventMapper.toAvro(event);
+    @Override
+    public void collectSensorEvent(SensorEventProto request, StreamObserver<Empty> responseObserver) {
+        try {
+            // 1. Преобразуем gRPC Protobuf-событие в Avro-объект
+            var avroEvent = sensorEventMapper.toAvro(request);
 
-        kafkaTemplate.send(SENSORS_TOPIC, avroEvent);
+            // 2. Отправляем в Kafka (точно так же, как в 19 спринте!)
+            kafkaTemplate.send(SENSORS_TOPIC, avroEvent);
+            log.info("Отправили сенсор в Kafka по gRPC: {}", avroEvent);
 
-        log.info("Отправили сенсор в Kafka: {}", avroEvent);
+            // 3. Сообщаем gRPC клиенту, что всё прошло успешно
+            responseObserver.onNext(Empty.getDefaultInstance());
+            responseObserver.onCompleted();
+
+        } catch (Exception e) {
+            log.error("Ошибка при обработке gRPC события сенсора", e);
+            responseObserver.onError(new StatusRuntimeException(
+                    Status.INTERNAL.withDescription(e.getLocalizedMessage()).withCause(e)
+            ));
+        }
     }
 
-    @PostMapping("/hubs")
-    public void collectHubEvent(@Valid @RequestBody HubEvent event) {
-        var avroEvent = hubEventMapper.toAvro(event);
+    @Override
+    public void collectHubEvent(HubEventProto request, StreamObserver<Empty> responseObserver) {
+        try {
+            // 1. Преобразуем gRPC Protobuf-событие в Avro-объект
+            var avroEvent = hubEventMapper.toAvro(request);
 
-        kafkaTemplate.send(HUBS_TOPIC, avroEvent);
+            // 2. Отправляем в Kafka
+            kafkaTemplate.send(HUBS_TOPIC, avroEvent);
+            log.info("Отправили хаб в Kafka по gRPC: {}", avroEvent);
 
-        log.info("Отправили хаб в Kafka: {}", avroEvent);
+            // 3. Отвечаем клиенту
+            responseObserver.onNext(Empty.getDefaultInstance());
+            responseObserver.onCompleted();
+
+        } catch (Exception e) {
+            log.error("Ошибка при обработке gRPC события хаба", e);
+            responseObserver.onError(new StatusRuntimeException(
+                    Status.INTERNAL.withDescription(e.getLocalizedMessage()).withCause(e)
+            ));
+        }
     }
 }

@@ -39,6 +39,12 @@
             <scope>provided</scope>
             <version>1.18.46</version>
         </dependency>
+
+        <dependency>
+            <groupId>ru.yandex.practicum</groupId>
+            <artifactId>proto-schemas</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 
     <build>

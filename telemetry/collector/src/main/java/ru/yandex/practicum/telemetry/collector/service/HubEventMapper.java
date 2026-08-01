@@ -1,11 +1,11 @@
 package ru.yandex.practicum.telemetry.collector.service;
 
 import org.springframework.stereotype.Service;
+import ru.yandex.practicum.grpc.telemetry.event.HubEventProto;
 import ru.yandex.practicum.kafka.telemetry.event.HubEventAvro;
-import ru.yandex.practicum.telemetry.collector.dto.hub.HubEvent;
-import ru.yandex.practicum.telemetry.collector.dto.hub.HubEventType;
 import ru.yandex.practicum.telemetry.collector.service.handler.hub.HubEventHandler;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
 @Service
 public class HubEventMapper {
 
-    private final Map<HubEventType, HubEventHandler> handlers;
+    private final Map<HubEventProto.PayloadCase, HubEventHandler> handlers;
 
     public HubEventMapper(List<HubEventHandler> handlerList) {
         this.handlers = handlerList.stream()
@@ -24,18 +24,23 @@ public class HubEventMapper {
                 ));
     }
 
-    public HubEventAvro toAvro(HubEvent event) {
-        HubEventHandler handler = handlers.get(event.getType());
+    public HubEventAvro toAvro(HubEventProto event) {
+        HubEventHandler handler = handlers.get(event.getPayloadCase());
 
         if (handler == null) {
-            throw new IllegalArgumentException("Не найден обработчик для типа события хаба: " + event.getType());
+            throw new IllegalArgumentException("Не найден обработчик для типа события хаба: " + event.getPayloadCase());
         }
 
         Object payload = handler.handlePayload(event);
 
+        Instant timestamp = Instant.ofEpochSecond(
+                event.getTimestamp().getSeconds(),
+                event.getTimestamp().getNanos()
+        );
+
         return HubEventAvro.newBuilder()
                 .setHubId(event.getHubId())
-                .setTimestamp(event.getTimestamp())
+                .setTimestamp(timestamp)
                 .setPayload(payload)
                 .build();
     }
