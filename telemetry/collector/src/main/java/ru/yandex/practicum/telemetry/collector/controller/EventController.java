@@ -8,8 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.avro.specific.SpecificRecordBase;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import net.devh.boot.grpc.server.service.GrpcService;
 import ru.yandex.practicum.grpc.telemetry.collector.CollectorControllerGrpc;
 import ru.yandex.practicum.grpc.telemetry.event.HubEventProto;
 import ru.yandex.practicum.grpc.telemetry.event.SensorEventProto;
@@ -17,8 +16,7 @@ import ru.yandex.practicum.telemetry.collector.service.HubEventMapper;
 import ru.yandex.practicum.telemetry.collector.service.SensorEventMapper;
 
 @Slf4j
-@RestController
-@RequestMapping("/events")
+@GrpcService
 @RequiredArgsConstructor
 public class EventController extends CollectorControllerGrpc.CollectorControllerImplBase {
     private final KafkaTemplate<String, SpecificRecordBase> kafkaTemplate;
