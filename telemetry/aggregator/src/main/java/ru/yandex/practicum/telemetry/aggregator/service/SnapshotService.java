@@ -17,23 +17,32 @@ public class SnapshotService {
         String hubId = event.getHubId();
         String sensorId = event.getId();
 
-        SensorsSnapshotAvro snapshot = snapshots.computeIfAbsent(hubId, k ->
-                SensorsSnapshotAvro.newBuilder()
-                        .setHubId(hubId)
-                        .setTimestamp(event.getTimestamp())
-                        .setSensorsState(new HashMap<>())
-                        .build()
-        );
+        SensorsSnapshotAvro snapshot = snapshots.get(hubId);
 
-        Map<String, SensorStateAvro> sensorsState = snapshot.getSensorsState();
-        SensorStateAvro oldState = sensorsState.get(sensorId);
+        if (snapshot == null) {
+            Map<String, SensorStateAvro> sensorsState = new HashMap<>();
+            SensorStateAvro newState = SensorStateAvro.newBuilder()
+                    .setTimestamp(event.getTimestamp())
+                    .setData(event.getPayload())
+                    .build();
+
+            sensorsState.put(sensorId, newState);
+
+            snapshot = SensorsSnapshotAvro.newBuilder()
+                    .setHubId(hubId)
+                    .setTimestamp(event.getTimestamp())
+                    .setSensorsState(sensorsState)
+                    .build();
+
+            snapshots.put(hubId, snapshot);
+            return Optional.of(snapshot);
+        }
+
+        SensorStateAvro oldState = snapshot.getSensorsState().get(sensorId);
 
         if (oldState != null) {
-            if (!event.getTimestamp().isAfter(oldState.getTimestamp())) {
-                return Optional.empty();
-            }
-
-            if (oldState.getData().equals(event.getPayload())) {
+            if (oldState.getTimestamp().isAfter(event.getTimestamp())
+                    || oldState.getData().equals(event.getPayload())) {
                 return Optional.empty();
             }
         }
@@ -43,7 +52,7 @@ public class SnapshotService {
                 .setData(event.getPayload())
                 .build();
 
-        sensorsState.put(sensorId, newState);
+        snapshot.getSensorsState().put(sensorId, newState);
         snapshot.setTimestamp(event.getTimestamp());
 
         return Optional.of(snapshot);
