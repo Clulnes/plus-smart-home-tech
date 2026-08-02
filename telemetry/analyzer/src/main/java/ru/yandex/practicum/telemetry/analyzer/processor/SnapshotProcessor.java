@@ -69,6 +69,7 @@ public class SnapshotProcessor {
         Map<String, SensorStateAvro> sensorStates = snapshot.getSensorsState();
 
         List<Scenario> scenarios = scenarioRepository.findByHubId(hubId);
+        log.info("Проверка снапшота хаба {}. Найдено сценариев в БД: {}", hubId, scenarios.size());
 
         for (Scenario scenario : scenarios) {
             boolean allConditionsMet = true;
@@ -152,8 +153,8 @@ public class SnapshotProcessor {
                         .build();
 
                 hubRouterClient.handleDeviceAction(request);
-                log.info("Отправлено gRPC действие: sensorId={}, type={}, value={}",
-                        sa.getSensor().getId(), sa.getAction().getType(), sa.getAction().getValue());
+                log.info("Отправлено gRPC действие: scenario={}, sensorId={}, type={}, value={}",
+                        scenario.getName(), sa.getSensor().getId(), sa.getAction().getType(), sa.getAction().getValue());
             } catch (Exception e) {
                 log.error("Ошибка при отправке gRPC действия для сценария {}", scenario.getName(), e);
             }

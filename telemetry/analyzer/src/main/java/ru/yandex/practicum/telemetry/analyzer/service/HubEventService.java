@@ -4,21 +4,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.yandex.practicum.kafka.telemetry.event.DeviceAddedEventAvro;
-import ru.yandex.practicum.kafka.telemetry.event.DeviceRemovedEventAvro;
-import ru.yandex.practicum.kafka.telemetry.event.HubEventAvro;
-import ru.yandex.practicum.kafka.telemetry.event.ScenarioAddedEventAvro;
-import ru.yandex.practicum.kafka.telemetry.event.ScenarioRemovedEventAvro;
-import ru.yandex.practicum.telemetry.analyzer.model.Action;
-import ru.yandex.practicum.telemetry.analyzer.model.Condition;
-import ru.yandex.practicum.telemetry.analyzer.model.Scenario;
-import ru.yandex.practicum.telemetry.analyzer.model.ScenarioAction;
-import ru.yandex.practicum.telemetry.analyzer.model.ScenarioCondition;
-import ru.yandex.practicum.telemetry.analyzer.model.Sensor;
-import ru.yandex.practicum.telemetry.analyzer.repository.ScenarioRepository;
-import ru.yandex.practicum.telemetry.analyzer.repository.SensorRepository;
+import ru.yandex.practicum.kafka.telemetry.event.*;
+import ru.yandex.practicum.telemetry.analyzer.model.*;
+import ru.yandex.practicum.telemetry.analyzer.repository.*;
 
-import java.util.List;
+import java.util.ArrayList;
 
 @Service
 @Slf4j
@@ -26,6 +16,8 @@ import java.util.List;
 public class HubEventService {
     private final SensorRepository sensorRepository;
     private final ScenarioRepository scenarioRepository;
+    private final ConditionRepository conditionRepository;
+    private final ActionRepository actionRepository;
 
     @Transactional
     public void processHubEvent(HubEventAvro event) {
@@ -51,12 +43,15 @@ public class HubEventService {
             Scenario scenario = Scenario.builder()
                     .hubId(hubId)
                     .name(sa.getName())
+                    .conditions(new ArrayList<>())
+                    .actions(new ArrayList<>())
                     .build();
 
-            List<ScenarioCondition> conditions = sa.getConditions().stream().map(c -> {
+            Scenario savedScenario = scenarioRepository.save(scenario);
+
+            for (ScenarioConditionAvro c : sa.getConditions()) {
                 Sensor sensor = sensorRepository.findById(c.getSensorId())
-                        .orElseGet(() -> sensorRepository.save(Sensor.builder().id(c.getSensorId()).hubId(hubId)
-                                .build()));
+                        .orElseGet(() -> sensorRepository.save(Sensor.builder().id(c.getSensorId()).hubId(hubId).build()));
 
                 Object val = c.getValue();
                 Integer intValue = null;
@@ -72,14 +67,19 @@ public class HubEventService {
                         .value(intValue)
                         .build();
 
-                return ScenarioCondition.builder()
-                        .scenario(scenario)
-                        .sensor(sensor)
-                        .condition(condition)
-                        .build();
-            }).toList();
+                Condition savedCondition = conditionRepository.save(condition);
 
-            List<ScenarioAction> actions = sa.getActions().stream().map(a -> {
+                ScenarioCondition scenarioCondition = ScenarioCondition.builder()
+                        .id(new ScenarioConditionId(savedScenario.getId(), sensor.getId(), savedCondition.getId()))
+                        .scenario(savedScenario)
+                        .sensor(sensor)
+                        .condition(savedCondition)
+                        .build();
+
+                savedScenario.getConditions().add(scenarioCondition);
+            }
+
+            for (DeviceActionAvro a : sa.getActions()) {
                 Sensor sensor = sensorRepository.findById(a.getSensorId())
                         .orElseGet(() -> sensorRepository.save(Sensor.builder().id(a.getSensorId()).hubId(hubId).build()));
 
@@ -88,17 +88,21 @@ public class HubEventService {
                         .value(a.getValue())
                         .build();
 
-                return ScenarioAction.builder()
-                        .scenario(scenario)
-                        .sensor(sensor)
-                        .action(action)
-                        .build();
-            }).toList();
+                Action savedAction = actionRepository.save(action);
 
-            scenario.setConditions(conditions);
-            scenario.setActions(actions);
-            scenarioRepository.save(scenario);
-            log.info("Сохранен сценарий: name={}, hubId={}", sa.getName(), hubId);
+                ScenarioAction scenarioAction = ScenarioAction.builder()
+                        .id(new ScenarioActionId(savedScenario.getId(), sensor.getId(), savedAction.getId()))
+                        .scenario(savedScenario)
+                        .sensor(sensor)
+                        .action(savedAction)
+                        .build();
+
+                savedScenario.getActions().add(scenarioAction);
+            }
+
+            scenarioRepository.save(savedScenario);
+            log.info("Сохранен сценарий: name={}, hubId={}, условий={}, действий={}",
+                    sa.getName(), hubId, savedScenario.getConditions().size(), savedScenario.getActions().size());
 
         } else if (payload instanceof ScenarioRemovedEventAvro sr) {
             scenarioRepository.findByHubIdAndName(hubId, sr.getName())
