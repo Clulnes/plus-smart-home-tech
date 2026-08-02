@@ -3,6 +3,7 @@ package ru.yandex.practicum.telemetry.analyzer.model;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.MapsId;
@@ -27,17 +28,17 @@ public class ScenarioAction {
     @EmbeddedId
     private ScenarioActionId id = new ScenarioActionId();
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.EAGER)
     @MapsId("scenarioId")
     @JoinColumn(name = "scenario_id")
     private Scenario scenario;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.EAGER)
     @MapsId("sensorId")
     @JoinColumn(name = "sensor_id")
     private Sensor sensor;
 
-    @OneToOne(cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToOne(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @MapsId("actionId")
     @JoinColumn(name = "action_id")
     private Action action;
