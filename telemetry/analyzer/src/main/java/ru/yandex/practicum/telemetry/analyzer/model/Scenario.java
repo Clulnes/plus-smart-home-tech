@@ -15,8 +15,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "scenarios")
@@ -37,9 +37,9 @@ public class Scenario {
 
     @Builder.Default
     @OneToMany(mappedBy = "scenario", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    private List<ScenarioCondition> conditions = new ArrayList<>();
+    private Set<ScenarioCondition> conditions = new HashSet<>();
 
     @Builder.Default
     @OneToMany(mappedBy = "scenario", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    private List<ScenarioAction> actions = new ArrayList<>();
+    private Set<ScenarioAction> actions = new HashSet<>();
 }

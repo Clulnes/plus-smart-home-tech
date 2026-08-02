@@ -8,7 +8,7 @@ import ru.yandex.practicum.kafka.telemetry.event.*;
 import ru.yandex.practicum.telemetry.analyzer.model.*;
 import ru.yandex.practicum.telemetry.analyzer.repository.*;
 
-import java.util.ArrayList;
+import java.util.HashSet;
 
 @Service
 @Slf4j
@@ -37,14 +37,18 @@ public class HubEventService {
             log.info("Удалено устройство: id={}", dr.getId());
 
         } else if (payload instanceof ScenarioAddedEventAvro sa) {
+            // Удаляем старый сценарий с таким же именем и ПРИНУДИТЕЛЬНО очищаем контекст (flush)
             scenarioRepository.findByHubIdAndName(hubId, sa.getName())
-                    .ifPresent(scenarioRepository::delete);
+                    .ifPresent(existing -> {
+                        scenarioRepository.delete(existing);
+                        scenarioRepository.flush();
+                    });
 
             Scenario scenario = Scenario.builder()
                     .hubId(hubId)
                     .name(sa.getName())
-                    .conditions(new ArrayList<>())
-                    .actions(new ArrayList<>())
+                    .conditions(new HashSet<>())
+                    .actions(new HashSet<>())
                     .build();
 
             Scenario savedScenario = scenarioRepository.save(scenario);
@@ -106,7 +110,10 @@ public class HubEventService {
 
         } else if (payload instanceof ScenarioRemovedEventAvro sr) {
             scenarioRepository.findByHubIdAndName(hubId, sr.getName())
-                    .ifPresent(scenarioRepository::delete);
+                    .ifPresent(existing -> {
+                        scenarioRepository.delete(existing);
+                        scenarioRepository.flush();
+                    });
             log.info("Удален сценарий: name={}, hubId={}", sr.getName(), hubId);
         }
     }
