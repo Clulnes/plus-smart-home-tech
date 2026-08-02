@@ -17,11 +17,10 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
-@Slf4j
 @Component
+@Slf4j
 @RequiredArgsConstructor
 public class AggregationStarter {
-
     private final KafkaConsumer<String, SensorEventAvro> consumer;
     private final KafkaProducer<String, SensorsSnapshotAvro> producer;
     private final SnapshotService snapshotService;

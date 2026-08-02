@@ -15,8 +15,8 @@ import ru.yandex.practicum.grpc.telemetry.event.SensorEventProto;
 import ru.yandex.practicum.telemetry.collector.service.HubEventMapper;
 import ru.yandex.practicum.telemetry.collector.service.SensorEventMapper;
 
-@Slf4j
 @GrpcService
+@Slf4j
 @RequiredArgsConstructor
 public class EventController extends CollectorControllerGrpc.CollectorControllerImplBase {
     private final KafkaTemplate<String, SpecificRecordBase> kafkaTemplate;
@@ -29,14 +29,11 @@ public class EventController extends CollectorControllerGrpc.CollectorController
     @Override
     public void collectSensorEvent(SensorEventProto request, StreamObserver<Empty> responseObserver) {
         try {
-            // 1. Преобразуем gRPC Protobuf-событие в Avro-объект
             var avroEvent = sensorEventMapper.toAvro(request);
 
-            // 2. Отправляем в Kafka (точно так же, как в 19 спринте!)
             kafkaTemplate.send(SENSORS_TOPIC, avroEvent);
             log.info("Отправили сенсор в Kafka по gRPC: {}", avroEvent);
 
-            // 3. Сообщаем gRPC клиенту, что всё прошло успешно
             responseObserver.onNext(Empty.getDefaultInstance());
             responseObserver.onCompleted();
 
@@ -51,14 +48,11 @@ public class EventController extends CollectorControllerGrpc.CollectorController
     @Override
     public void collectHubEvent(HubEventProto request, StreamObserver<Empty> responseObserver) {
         try {
-            // 1. Преобразуем gRPC Protobuf-событие в Avro-объект
             var avroEvent = hubEventMapper.toAvro(request);
 
-            // 2. Отправляем в Kafka
             kafkaTemplate.send(HUBS_TOPIC, avroEvent);
             log.info("Отправили хаб в Kafka по gRPC: {}", avroEvent);
 
-            // 3. Отвечаем клиенту
             responseObserver.onNext(Empty.getDefaultInstance());
             responseObserver.onCompleted();
 
