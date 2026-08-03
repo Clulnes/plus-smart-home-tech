@@ -8,7 +8,10 @@ import ru.yandex.practicum.kafka.telemetry.event.*;
 import ru.yandex.practicum.telemetry.analyzer.model.*;
 import ru.yandex.practicum.telemetry.analyzer.repository.*;
 
-import java.util.HashSet;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @Slf4j
@@ -37,7 +40,6 @@ public class HubEventService {
             log.info("Удалено устройство: id={}", dr.getId());
 
         } else if (payload instanceof ScenarioAddedEventAvro sa) {
-            // Удаляем старый сценарий с таким же именем и ПРИНУДИТЕЛЬНО очищаем контекст (flush)
             scenarioRepository.findByHubIdAndName(hubId, sa.getName())
                     .ifPresent(existing -> {
                         scenarioRepository.delete(existing);
@@ -53,10 +55,24 @@ public class HubEventService {
 
             Scenario savedScenario = scenarioRepository.save(scenario);
 
-            for (ScenarioConditionAvro c : sa.getConditions()) {
-                Sensor sensor = sensorRepository.findById(c.getSensorId())
-                        .orElseGet(() -> sensorRepository.save(Sensor.builder().id(c.getSensorId()).hubId(hubId).build()));
+            Set<String> requiredSensorIds = Stream.concat(
+                    sa.getConditions().stream().map(ScenarioConditionAvro::getSensorId),
+                    sa.getActions().stream().map(DeviceActionAvro::getSensorId)
+            ).collect(Collectors.toSet());
 
+            Map<String, Sensor> sensorMap = sensorRepository.findAllById(requiredSensorIds).stream()
+                    .collect(Collectors.toMap(Sensor::getId, Function.identity()));
+
+            List<Sensor> missingSensors = requiredSensorIds.stream()
+                    .filter(id -> !sensorMap.containsKey(id))
+                    .map(id -> Sensor.builder().id(id).hubId(hubId).build())
+                    .toList();
+
+            if (!missingSensors.isEmpty()) {
+                sensorRepository.saveAll(missingSensors).forEach(s -> sensorMap.put(s.getId(), s));
+            }
+
+            List<Condition> conditionsToSave = sa.getConditions().stream().map(c -> {
                 Object val = c.getValue();
                 Integer intValue = null;
                 if (val instanceof Integer i) {
@@ -65,34 +81,43 @@ public class HubEventService {
                     intValue = b ? 1 : 0;
                 }
 
-                Condition condition = Condition.builder()
-                        .type(c.getType().name())
-                        .operation(c.getOperation().name())
+                return Condition.builder()
+                        .type(ConditionType.valueOf(c.getType().name()))
+                        .operation(ConditionOperation.valueOf(c.getOperation().name()))
                         .value(intValue)
                         .build();
+            }).toList();
 
-                Condition savedCondition = conditionRepository.save(condition);
+            List<Condition> savedConditions = conditionRepository.saveAll(conditionsToSave);
+
+            for (int i = 0; i < sa.getConditions().size(); i++) {
+                ScenarioConditionAvro avroCond = sa.getConditions().get(i);
+                Condition savedCond = savedConditions.get(i);
+                Sensor sensor = sensorMap.get(avroCond.getSensorId());
 
                 ScenarioCondition scenarioCondition = ScenarioCondition.builder()
-                        .id(new ScenarioConditionId(savedScenario.getId(), sensor.getId(), savedCondition.getId()))
+                        .id(new ScenarioConditionId(savedScenario.getId(), sensor.getId(), savedCond.getId()))
                         .scenario(savedScenario)
                         .sensor(sensor)
-                        .condition(savedCondition)
+                        .condition(savedCond)
                         .build();
 
                 savedScenario.getConditions().add(scenarioCondition);
             }
 
-            for (DeviceActionAvro a : sa.getActions()) {
-                Sensor sensor = sensorRepository.findById(a.getSensorId())
-                        .orElseGet(() -> sensorRepository.save(Sensor.builder().id(a.getSensorId()).hubId(hubId).build()));
+            List<Action> actionsToSave = sa.getActions().stream().map(a ->
+                    Action.builder()
+                            .type(ActionType.valueOf(a.getType().name()))
+                            .value(a.getValue())
+                            .build()
+            ).toList();
 
-                Action action = Action.builder()
-                        .type(a.getType().name())
-                        .value(a.getValue())
-                        .build();
+            List<Action> savedActions = actionRepository.saveAll(actionsToSave);
 
-                Action savedAction = actionRepository.save(action);
+            for (int i = 0; i < sa.getActions().size(); i++) {
+                DeviceActionAvro avroAction = sa.getActions().get(i);
+                Action savedAction = savedActions.get(i);
+                Sensor sensor = sensorMap.get(avroAction.getSensorId());
 
                 ScenarioAction scenarioAction = ScenarioAction.builder()
                         .id(new ScenarioActionId(savedScenario.getId(), sensor.getId(), savedAction.getId()))
