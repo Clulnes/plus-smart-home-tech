@@ -14,6 +14,8 @@ import ru.yandex.practicum.grpc.telemetry.event.DeviceActionProto;
 import ru.yandex.practicum.grpc.telemetry.event.DeviceActionRequestProto;
 import ru.yandex.practicum.grpc.telemetry.hubrouter.HubRouterControllerGrpc;
 import ru.yandex.practicum.kafka.telemetry.event.*;
+import ru.yandex.practicum.telemetry.analyzer.model.ConditionOperation;
+import ru.yandex.practicum.telemetry.analyzer.model.ConditionType;
 import ru.yandex.practicum.telemetry.analyzer.model.Scenario;
 import ru.yandex.practicum.telemetry.analyzer.model.ScenarioAction;
 import ru.yandex.practicum.telemetry.analyzer.model.ScenarioCondition;
@@ -95,34 +97,33 @@ public class SnapshotProcessor {
         Integer sensorValue = extractValue(sc.getCondition().getType(), sensorData);
         if (sensorValue == null) return false;
 
-        String op = sc.getCondition().getOperation();
+        ConditionOperation op = sc.getCondition().getOperation();
         Integer targetValue = sc.getCondition().getValue();
         if (targetValue == null) return false;
 
         return switch (op) {
-            case "EQUALS" -> sensorValue.equals(targetValue);
-            case "GREATER_THAN" -> sensorValue > targetValue;
-            case "LOWER_THAN" -> sensorValue < targetValue;
-            default -> false;
+            case EQUALS -> sensorValue.equals(targetValue);
+            case GREATER_THAN -> sensorValue > targetValue;
+            case LOWER_THAN -> sensorValue < targetValue;
         };
     }
 
-    private Integer extractValue(String conditionType, Object sensorData) {
+    private Integer extractValue(ConditionType conditionType, Object sensorData) {
         if (sensorData instanceof ClimateSensorAvro c) {
             return switch (conditionType) {
-                case "TEMPERATURE" -> c.getTemperatureC();
-                case "HUMIDITY" -> c.getHumidity();
-                case "CO2LEVEL" -> c.getCo2Level();
+                case TEMPERATURE -> c.getTemperatureC();
+                case HUMIDITY -> c.getHumidity();
+                case CO2LEVEL -> c.getCo2Level();
                 default -> null;
             };
         } else if (sensorData instanceof LightSensorAvro l) {
-            return "LUMINOSITY".equals(conditionType) ? l.getLuminosity() : null;
+            return conditionType == ConditionType.LUMINOSITY ? l.getLuminosity() : null;
         } else if (sensorData instanceof MotionSensorAvro m) {
-            return "MOTION".equals(conditionType) ? (m.getMotion() ? 1 : 0) : null;
+            return conditionType == ConditionType.MOTION ? (m.getMotion() ? 1 : 0) : null;
         } else if (sensorData instanceof SwitchSensorAvro s) {
-            return "SWITCH".equals(conditionType) ? (s.getState() ? 1 : 0) : null;
+            return conditionType == ConditionType.SWITCH ? (s.getState() ? 1 : 0) : null;
         } else if (sensorData instanceof TemperatureSensorAvro t) {
-            return "TEMPERATURE".equals(conditionType) ? t.getTemperatureC() : null;
+            return conditionType == ConditionType.TEMPERATURE ? t.getTemperatureC() : null;
         }
         return null;
     }
@@ -132,7 +133,7 @@ public class SnapshotProcessor {
             try {
                 DeviceActionProto.Builder actionBuilder = DeviceActionProto.newBuilder()
                         .setSensorId(sa.getSensor().getId())
-                        .setType(ActionTypeProto.valueOf(sa.getAction().getType()));
+                        .setType(ActionTypeProto.valueOf(sa.getAction().getType().name()));
 
                 if (sa.getAction().getValue() != null) {
                     actionBuilder.setValue(sa.getAction().getValue());

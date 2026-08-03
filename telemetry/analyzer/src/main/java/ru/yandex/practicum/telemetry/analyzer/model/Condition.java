@@ -1,6 +1,8 @@
 package ru.yandex.practicum.telemetry.analyzer.model;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -23,7 +25,11 @@ public class Condition {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String type;
-    private String operation;
+    @Enumerated(EnumType.STRING)
+    private ConditionType type;
+
+    @Enumerated(EnumType.STRING)
+    private ConditionOperation operation;
+
     private Integer value;
 }
