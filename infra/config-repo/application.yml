@@ -1,7 +1,8 @@
 spring:
   main:
-    banner-mode: off
-    log-startup-info: false
+    banner-mode: console
+    log-startup-info: true
+    web-application-type: servlet
 
 logging:
   level:
