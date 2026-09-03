@@ -50,7 +50,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>ru.yandex.practicum.commerce.order.OrderApplication</mainClass>
+                    <mainClass>ru.yandex.practicum.commerce.order.OrderServiceApplication</mainClass>
                 </configuration>
                 <executions>
                     <execution>
