@@ -6,5 +6,5 @@ import ru.yandex.practicum.commerce.order.model.Order;
 import java.util.List;
 
 public interface OrderRepository extends JpaRepository<Order, Long> {
-    List<Order> findByCustomerEmailIgnoreCase(String customerEmail);
+    List<Order> findAllByCustomerEmailIgnoreCase(String email);
 }

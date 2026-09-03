@@ -7,37 +7,36 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "inventory")
+@Table(name = "records")
 @Getter
 @Setter
-@Builder
 @NoArgsConstructor
-@AllArgsConstructor
 public class Inventory {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(name = "product_id", nullable = false, unique = true)
     private Long productId;
 
     @Column(nullable = false)
-    private Integer quantity;
+    private Integer quantity = 0;
 
-    @Column(nullable = false)
-    private Integer reservedQuantity;
+    @Column(name = "reserved_quantity", nullable = false)
+    private Integer reservedQuantity = 0;
+
+    @Column(name = "available_quantity", nullable = false)
+    private Integer availableQuantity = 0;
 
     @Version
     private Long version;
 
-    public Integer getAvailableQuantity() {
-        return (quantity != null ? quantity : 0) - (reservedQuantity != null ? reservedQuantity : 0);
+    public void refreshAvailable() {
+        this.availableQuantity = this.quantity - this.reservedQuantity;
     }
 }

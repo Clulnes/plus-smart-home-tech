@@ -7,8 +7,8 @@ import ru.yandex.practicum.commerce.inventory.dto.InventoryDto;
 import ru.yandex.practicum.commerce.inventory.dto.ReserveRequest;
 import ru.yandex.practicum.commerce.inventory.dto.ReserveResponse;
 import ru.yandex.practicum.commerce.inventory.dto.UpdateInventoryRequest;
-import ru.yandex.practicum.commerce.inventory.exception.ConflictException;
 import ru.yandex.practicum.commerce.inventory.exception.NotFoundException;
+import ru.yandex.practicum.commerce.inventory.exception.ConflictException;
 import ru.yandex.practicum.commerce.inventory.model.Inventory;
 import ru.yandex.practicum.commerce.inventory.repository.InventoryRepository;
 
@@ -18,71 +18,60 @@ import java.util.List;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class InventoryService {
-    private final InventoryRepository inventoryRepository;
+    private final InventoryRepository InventoryRepository;
 
-    public List<InventoryDto> getAllInventory() {
-        return inventoryRepository.findAll().stream()
-                .map(this::toDto)
-                .toList();
+    public List<InventoryDto> fetchAllStocks() {
+        return InventoryRepository.findAll().stream().map(this::toDto).toList();
     }
 
-    public InventoryDto getByProductId(Long productId) {
-        return inventoryRepository.findByProductId(productId)
-                .map(this::toDto)
-                .orElseThrow(() -> new NotFoundException("Остатки для товара с productId=" + productId + " не найдены"));
+    public InventoryDto fetchByProductId(Long productId) {
+        return InventoryRepository.findByProductId(productId).map(this::toDto)
+                .orElseThrow(() -> new NotFoundException("Stock record for product ID " + productId + " not found"));
     }
 
     @Transactional
-    public InventoryDto createInventory(UpdateInventoryRequest request) {
-        if (inventoryRepository.existsByProductId(request.getProductId())) {
-            throw new ConflictException("Запись об остатках для товара с productId=" + request.getProductId() + " уже существует");
+    public InventoryDto registerStock(UpdateInventoryRequest req) {
+        if (InventoryRepository.existsByProductId(req.productId())) {
+            throw new IllegalArgumentException("Record for product " + req.productId() + " already exists");
+        }
+        Inventory item = new Inventory();
+        item.setProductId(req.productId());
+        item.setQuantity(req.quantity());
+        item.setReservedQuantity(0);
+        item.refreshAvailable();
+        return toDto(InventoryRepository.save(item));
+    }
+
+    @Transactional
+    public InventoryDto modifyStockQuantity(UpdateInventoryRequest req) {
+        Inventory item = InventoryRepository.findByProductId(req.productId())
+                .orElseThrow(() -> new NotFoundException("Stock record not found"));
+
+        if (req.quantity() < item.getReservedQuantity()) {
+            throw new ConflictException("New quantity cannot be lower than current reserved quantity");
+        }
+        item.setQuantity(req.quantity());
+        item.refreshAvailable();
+        return toDto(InventoryRepository.save(item));
+    }
+
+    @Transactional
+    public ReserveResponse executeReservation(ReserveRequest req) {
+        Inventory item = InventoryRepository.findByProductId(req.productId())
+                .orElseThrow(() -> new NotFoundException("Stock item not found for product ID " + req.productId()));
+
+        if (req.quantity() > item.getAvailableQuantity()) {
+            throw new ConflictException("Not enough available stock to reserve");
         }
 
-        Inventory inventory = Inventory.builder()
-                .productId(request.getProductId())
-                .quantity(request.getQuantity())
-                .reservedQuantity(0)
-                .build();
+        item.setReservedQuantity(item.getReservedQuantity() + req.quantity());
+        item.refreshAvailable();
+        InventoryRepository.save(item);
 
-        return toDto(inventoryRepository.save(inventory));
+        return new ReserveResponse(true, item.getAvailableQuantity(), "Reservation successful");
     }
 
-    @Transactional
-    public InventoryDto updateInventory(UpdateInventoryRequest request) {
-        Inventory inventory = inventoryRepository.findByProductId(request.getProductId())
-                .orElseThrow(() -> new NotFoundException("Остатки для товара с productId=" + request.getProductId() + " не найдены"));
-
-        inventory.setQuantity(request.getQuantity());
-        return toDto(inventoryRepository.save(inventory));
-    }
-
-    @Transactional
-    public ReserveResponse reserveStock(ReserveRequest request) {
-        Inventory inventory = inventoryRepository.findByProductId(request.getProductId())
-                .orElseThrow(() -> new NotFoundException("Товар с productId=" + request.getProductId() + " не найден на складе"));
-
-        if (inventory.getAvailableQuantity() < request.getQuantity()) {
-            throw new ConflictException("Недостаточно товара на складе. Доступно: " + inventory.getAvailableQuantity() + ", запрошено: " + request.getQuantity());
-        }
-
-        inventory.setReservedQuantity(inventory.getReservedQuantity() + request.getQuantity());
-        inventoryRepository.save(inventory);
-
-        return ReserveResponse.builder()
-                .success(true)
-                .availableQuantity(inventory.getAvailableQuantity())
-                .message("Товар успешно зарезервирован")
-                .build();
-    }
-
-    public InventoryDto toDto(Inventory inventory) {
-        if (inventory == null) return null;
-        return InventoryDto.builder()
-                .id(inventory.getId())
-                .productId(inventory.getProductId())
-                .quantity(inventory.getQuantity())
-                .reservedQuantity(inventory.getReservedQuantity())
-                .availableQuantity(inventory.getAvailableQuantity())
-                .build();
+    private InventoryDto toDto(Inventory item) {
+        return new InventoryDto(item.getId(), item.getProductId(), item.getQuantity(), item.getReservedQuantity(), item.getAvailableQuantity());
     }
 }

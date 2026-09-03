@@ -2,20 +2,12 @@ package ru.yandex.practicum.commerce.inventory.dto;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class UpdateInventoryRequest {
-    @NotNull
-    private Long productId;
+public record UpdateInventoryRequest(
+        @NotNull(message = "productId must not be null")
+        Long productId,
 
-    @NotNull
-    @Min(0)
-    private Integer quantity;
-}
+        @NotNull(message = "quantity must not be null")
+        @Min(value = 0, message = "quantity must be positive or zero")
+        Integer quantity
+) {}

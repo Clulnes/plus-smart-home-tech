@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import ru.yandex.practicum.commerce.product.dto.CreateProductRequest;
 import ru.yandex.practicum.commerce.product.dto.ProductDto;
 import ru.yandex.practicum.commerce.product.dto.UpdateProductRequest;
-import ru.yandex.practicum.commerce.product.service.ProductService;
+import ru.yandex.practicum.commerce.product.service.CatalogService;
 
 import java.util.List;
 
@@ -15,36 +15,36 @@ import java.util.List;
 @RequestMapping("/api/products")
 @RequiredArgsConstructor
 public class ProductController {
-    private final ProductService productService;
+    private final CatalogService catalogService;
 
     @GetMapping
-    public List<ProductDto> getAllProducts() {
-        return productService.getAllProducts();
+    public List<ProductDto> getProducts() {
+        return catalogService.retrieveActiveProducts();
     }
 
     @GetMapping("/{id}")
     public ProductDto getProductById(@PathVariable Long id) {
-        return productService.getProductById(id);
+        return catalogService.retrieveProductById(id);
     }
 
     @GetMapping("/category/{categoryId}")
     public List<ProductDto> getProductsByCategory(@PathVariable Long categoryId) {
-        return productService.getProductsByCategory(categoryId);
+        return catalogService.retrieveProductsByCategory(categoryId);
     }
 
     @GetMapping("/search")
-    public List<ProductDto> searchProducts(@RequestParam(required = false) String query) {
-        return productService.searchProducts(query);
+    public List<ProductDto> searchProducts(@RequestParam(name = "query", required = false) String query) {
+        return catalogService.searchProducts(query);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ProductDto createProduct(@Valid @RequestBody CreateProductRequest request) {
-        return productService.createProduct(request);
+        return catalogService.saveProduct(request);
     }
 
     @PatchMapping("/{id}")
     public ProductDto updateProduct(@PathVariable Long id, @Valid @RequestBody UpdateProductRequest request) {
-        return productService.updateProduct(id, request);
+        return catalogService.modifyProduct(id, request);
     }
 }

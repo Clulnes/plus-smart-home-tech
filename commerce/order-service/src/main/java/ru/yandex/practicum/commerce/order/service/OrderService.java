@@ -3,17 +3,14 @@ package ru.yandex.practicum.commerce.order.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.yandex.practicum.commerce.order.dto.CreateOrderRequest;
-import ru.yandex.practicum.commerce.order.dto.OrderDto;
-import ru.yandex.practicum.commerce.order.dto.OrderItemDto;
+import ru.yandex.practicum.commerce.order.dto.*;
 import ru.yandex.practicum.commerce.order.exception.NotFoundException;
-import ru.yandex.practicum.commerce.order.model.Order;
 import ru.yandex.practicum.commerce.order.model.OrderItem;
+import ru.yandex.practicum.commerce.order.model.Order;
 import ru.yandex.practicum.commerce.order.repository.OrderRepository;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -22,81 +19,51 @@ import java.util.List;
 public class OrderService {
     private final OrderRepository orderRepository;
 
-    public List<OrderDto> getAllOrders() {
-        return orderRepository.findAll().stream()
-                .map(this::toDto)
-                .toList();
+    public List<OrderDto> fetchAllOrders() {
+        return orderRepository.findAll().stream().map(this::toDto).toList();
     }
 
-    public OrderDto getOrderById(Long id) {
-        return orderRepository.findById(id)
-                .map(this::toDto)
-                .orElseThrow(() -> new NotFoundException("Заказ с id=" + id + " не найден"));
+    public OrderDto fetchOrderById(Long id) {
+        return orderRepository.findById(id).map(this::toDto)
+                .orElseThrow(() -> new NotFoundException("Order #" + id + " not found"));
     }
 
-    public List<OrderDto> getOrdersByEmail(String email) {
-        return orderRepository.findByCustomerEmailIgnoreCase(email).stream()
-                .map(this::toDto)
-                .toList();
+    public List<OrderDto> fetchOrdersByEmail(String email) {
+        return orderRepository.findAllByCustomerEmailIgnoreCase(email).stream().map(this::toDto).toList();
     }
 
     @Transactional
-    public OrderDto createOrder(CreateOrderRequest request) {
-        BigDecimal totalPrice = request.getItems().stream()
-                .map(item -> item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+    public OrderDto registerNewOrder(CreateOrderRequest req) {
+        BigDecimal total = req.items().stream()
+                .map(i -> i.price().multiply(BigDecimal.valueOf(i.quantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        Order order = Order.builder()
-                .customerName(request.getCustomerName())
-                .customerEmail(request.getCustomerEmail())
-                .status("CREATED")
-                .totalPrice(totalPrice)
-                .statusDetails("Заказ успешно оформлен")
-                .createdAt(LocalDateTime.now())
-                .items(new ArrayList<>())
-                .build();
+        Order order = new Order();
+        order.setCustomerName(req.customerName());
+        order.setCustomerEmail(req.customerEmail());
+        order.setStatus("CREATED");
+        order.setTotalPrice(total);
+        order.setStatusDetails("Order accepted");
+        order.setCreatedAt(LocalDateTime.now());
 
-        List<OrderItem> orderItems = request.getItems().stream()
-                .map(itemReq -> OrderItem.builder()
-                        .productId(itemReq.getProductId())
-                        .productName(itemReq.getProductName())
-                        .quantity(itemReq.getQuantity())
-                        .price(itemReq.getPrice())
-                        .order(order)
-                        .build())
-                .toList();
-
-        order.getItems().addAll(orderItems);
+        for (OrderItemRequest itemReq : req.items()) {
+            OrderItem item = new OrderItem();
+            item.setProductId(itemReq.productId());
+            item.setProductName(itemReq.productName());
+            item.setQuantity(itemReq.quantity());
+            item.setPrice(itemReq.price());
+            order.bindItem(item);
+        }
 
         return toDto(orderRepository.save(order));
     }
 
-    public OrderDto toDto(Order order) {
-        if (order == null) return null;
+    private OrderDto toDto(Order o) {
+        List<OrderItemDto> itemDtos = o.getItems().stream()
+                .map(i -> new OrderItemDto(i.getId(), i.getProductId(), i.getProductName(), i.getQuantity(), i.getPrice()))
+                .toList();
 
-        List<OrderItemDto> itemDtos = order.getItems() != null
-                ? order.getItems().stream().map(this::toItemDto).toList()
-                : List.of();
-
-        return OrderDto.builder()
-                .id(order.getId())
-                .customerName(order.getCustomerName())
-                .customerEmail(order.getCustomerEmail())
-                .status(order.getStatus())
-                .totalPrice(order.getTotalPrice())
-                .statusDetails(order.getStatusDetails())
-                .createdAt(order.getCreatedAt())
-                .items(itemDtos)
-                .build();
-    }
-
-    private OrderItemDto toItemDto(OrderItem item) {
-        return OrderItemDto.builder()
-                .id(item.getId())
-                .productId(item.getProductId())
-                .productName(item.getProductName())
-                .quantity(item.getQuantity())
-                .price(item.getPrice())
-                .build();
+        return new OrderDto(o.getId(), o.getCustomerName(), o.getCustomerEmail(), o.getStatus(),
+                o.getTotalPrice(), o.getStatusDetails(), o.getCreatedAt(), itemDtos);
     }
 }

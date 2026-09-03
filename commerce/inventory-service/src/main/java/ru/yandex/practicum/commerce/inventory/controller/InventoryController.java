@@ -23,31 +23,31 @@ import java.util.List;
 @RequestMapping("/api/inventory")
 @RequiredArgsConstructor
 public class InventoryController {
-    private final InventoryService inventoryService;
+    private final InventoryService InventoryService;
 
     @GetMapping
-    public List<InventoryDto> getAllInventory() {
-        return inventoryService.getAllInventory();
+    public List<InventoryDto> getAll() {
+        return InventoryService.fetchAllStocks();
     }
 
     @GetMapping("/{productId}")
-    public InventoryDto getByProductId(@PathVariable Long productId) {
-        return inventoryService.getByProductId(productId);
+    public InventoryDto getByProduct(@PathVariable Long productId) {
+        return InventoryService.fetchByProductId(productId);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public InventoryDto createInventory(@Valid @RequestBody UpdateInventoryRequest request) {
-        return inventoryService.createInventory(request);
+    public InventoryDto create(@Valid @RequestBody UpdateInventoryRequest request) {
+        return InventoryService.registerStock(request);
     }
 
     @PutMapping
-    public InventoryDto updateInventory(@Valid @RequestBody UpdateInventoryRequest request) {
-        return inventoryService.updateInventory(request);
+    public InventoryDto update(@Valid @RequestBody UpdateInventoryRequest request) {
+        return InventoryService.modifyStockQuantity(request);
     }
 
     @PostMapping("/reserve")
-    public ReserveResponse reserveStock(@Valid @RequestBody ReserveRequest request) {
-        return inventoryService.reserveStock(request);
+    public ReserveResponse reserve(@Valid @RequestBody ReserveRequest request) {
+        return InventoryService.executeReservation(request);
     }
 }
