@@ -2,6 +2,7 @@ spring:
   main:
     banner-mode: console
     log-startup-info: true
+    web-application-type: servlet
 
 logging:
   level:
