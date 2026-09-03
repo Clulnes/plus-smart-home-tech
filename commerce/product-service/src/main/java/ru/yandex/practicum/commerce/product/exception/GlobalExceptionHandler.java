@@ -1,5 +1,6 @@
 package ru.yandex.practicum.commerce.product.exception;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -10,12 +11,14 @@ import ru.yandex.practicum.commerce.product.dto.ErrorResponse;
 import java.util.HashMap;
 import java.util.Map;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(NotFoundException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public ErrorResponse onNotFound(NotFoundException ex) {
+        log.warn("Resource not found: {}", ex.getMessage());
         return new ErrorResponse(HttpStatus.NOT_FOUND.value(), ex.getMessage());
     }
 
@@ -24,7 +27,16 @@ public class GlobalExceptionHandler {
     public ErrorResponse onValidation(MethodArgumentNotValidException ex) {
         Map<String, String> details = new HashMap<>();
         ex.getBindingResult().getFieldErrors().forEach(f -> details.put(f.getField(), f.getDefaultMessage()));
+        log.warn("Validation error: {}", details);
         return new ErrorResponse(HttpStatus.BAD_REQUEST.value(), "Validation failed",
                 java.time.LocalDateTime.now(), details);
+    }
+
+    @ExceptionHandler(Exception.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    public ErrorResponse onUnhandledException(Exception ex) {
+        log.error("Internal server error: ", ex);
+        return new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Internal server error: "
+                + ex.getMessage());
     }
 }
