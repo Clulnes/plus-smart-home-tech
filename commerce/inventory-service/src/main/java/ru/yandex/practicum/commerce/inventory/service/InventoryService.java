@@ -71,7 +71,24 @@ public class InventoryService {
         return new ReserveResponse(true, item.getAvailableQuantity(), "Reservation successful");
     }
 
+    @Transactional
+    public ReserveResponse releaseReservation(ReserveRequest req) {
+        Inventory item = InventoryRepository.findByProductId(req.productId())
+                .orElseThrow(() -> new NotFoundException("Stock item not found for product ID " + req.productId()));
+
+        if (req.quantity() > item.getReservedQuantity()) {
+            throw new IllegalArgumentException("Cannot release more than currently reserved");
+        }
+
+        item.setReservedQuantity(item.getReservedQuantity() - req.quantity());
+        item.refreshAvailable();
+        InventoryRepository.save(item);
+
+        return new ReserveResponse(true, item.getAvailableQuantity(), "Reservation released successfully");
+    }
+
     private InventoryDto toDto(Inventory item) {
-        return new InventoryDto(item.getId(), item.getProductId(), item.getQuantity(), item.getReservedQuantity(), item.getAvailableQuantity());
+        return new InventoryDto(item.getId(), item.getProductId(), item.getQuantity(), item.getReservedQuantity(),
+                item.getAvailableQuantity());
     }
 }

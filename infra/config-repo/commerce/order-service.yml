@@ -8,6 +8,18 @@ spring:
     username: dbuser
     password: 12345
   jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
       ddl-auto: update
     show-sql: false
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: 5000
+            readTimeout: 5000
+            loggerLevel: basic
+          inventory-service:
+            connectTimeout: 3000
+            readTimeout: 3000
