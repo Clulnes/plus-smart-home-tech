@@ -31,25 +31,24 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class OrderService {
     private final OrderRepository orderRepository;
     private final ProductClient productClient;
     private final InventoryClient inventoryClient;
 
-    @Transactional(readOnly = true)
     public List<OrderDto> fetchAllOrders() {
         return orderRepository.findAll().stream().map(this::toDto).toList();
     }
 
-    @Transactional(readOnly = true)
     public OrderDto fetchOrderById(Long id) {
         return orderRepository.findById(id).map(this::toDto)
                 .orElseThrow(() -> new NotFoundException("Order #" + id + " not found"));
     }
 
-    @Transactional(readOnly = true)
     public List<OrderDto> fetchOrdersByEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return fetchAllOrders();
+        }
         return orderRepository.findAllByCustomerEmailIgnoreCase(email).stream().map(this::toDto).toList();
     }
 
@@ -61,9 +60,9 @@ public class OrderService {
                 ));
 
         Map<Long, ProductClientDto> productDataMap = new HashMap<>();
+
         for (Long productId : productQuantities.keySet()) {
             ProductClientDto product;
-
             try {
                 product = productClient.getProductById(productId);
             } catch (FeignException.NotFound ex) {
@@ -79,11 +78,11 @@ public class OrderService {
         }
 
         List<ReserveClientRequest> successfulReservations = new ArrayList<>();
+
         try {
             for (Map.Entry<Long, Integer> entry : productQuantities.entrySet()) {
                 ReserveClientRequest reserveReq = new ReserveClientRequest(entry.getKey(), entry.getValue());
                 ReserveClientResponse response = inventoryClient.reserveStock(reserveReq);
-
                 if (response == null || !response.success()) {
                     throw new OrderProcessingException("Insufficient stock for product ID: " + entry.getKey());
                 }
@@ -91,16 +90,13 @@ public class OrderService {
             }
         } catch (Exception ex) {
             log.warn("Reservation failed, triggering compensation for {} items", successfulReservations.size());
-
             for (ReserveClientRequest rollback : successfulReservations) {
                 try {
                     inventoryClient.releaseStock(rollback);
                 } catch (Exception releaseEx) {
-                    log.error("Failed to release reservation during compensation for product: {}",
-                            rollback.productId(), releaseEx);
+                    log.error("Failed to release reservation for product: {}", rollback.productId(), releaseEx);
                 }
             }
-
             if (ex instanceof OrderProcessingException) {
                 throw (OrderProcessingException) ex;
             }
@@ -111,7 +107,7 @@ public class OrderService {
     }
 
     @Transactional
-    protected OrderDto saveOrderInDb(CreateOrderRequest req, Map<Long, ProductClientDto> productDataMap) {
+    public OrderDto saveOrderInDb(CreateOrderRequest req, Map<Long, ProductClientDto> productDataMap) {
         BigDecimal total = BigDecimal.ZERO;
 
         Order order = new Order();
@@ -135,14 +131,17 @@ public class OrderService {
         }
 
         order.setTotalPrice(total);
-        return toDto(orderRepository.save(order));
+        Order saved = orderRepository.save(order);
+        return toDto(saved);
     }
 
-    private OrderDto toDto(Order o) {
-        List<OrderItemDto> itemDtos = o.getItems().stream()
-                .map(i -> new OrderItemDto(i.getId(), i.getProductId(), i.getProductName(),
-                        i.getQuantity(), i.getPrice()))
-                .toList();
+    public OrderDto toDto(Order o) {
+        if (o == null) return null;
+
+        List<OrderItemDto> itemDtos = (o.getItems() != null)
+                ? o.getItems().stream().map(i -> new OrderItemDto(i.getId(), i.getProductId(),
+                i.getProductName(), i.getQuantity(), i.getPrice())).toList()
+                : List.of();
 
         return new OrderDto(o.getId(), o.getCustomerName(), o.getCustomerEmail(), o.getStatus(),
                 o.getTotalPrice(), o.getStatusDetails(), o.getCreatedAt(), itemDtos);
