@@ -1,24 +1,13 @@
 package ru.yandex.practicum.commerce.order.dto;
 
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
-import java.math.BigDecimal;
-
 public record OrderItemRequest(
-        @NotNull
+        @NotNull(message = "productId must not be null")
         Long productId,
 
-        @NotBlank
-        String productName,
-
-        @NotNull
-        @Min(1)
-        Integer quantity,
-
-        @NotNull
-        @DecimalMin("0.01")
-        BigDecimal price
+        @NotNull(message = "quantity must not be null")
+        @Min(value = 1, message = "quantity must be at least 1")
+        Integer quantity
 ) {}
