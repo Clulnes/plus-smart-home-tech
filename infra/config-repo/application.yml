@@ -2,17 +2,12 @@ spring:
   main:
     banner-mode: console
     log-startup-info: true
-    web-application-type: servlet
 
 logging:
   level:
-    ru.yandex.practicum.telemetry: WARN
-    org:
-      springframework: ERROR
-      apache.kafka: WARN
-
-kafka:
-  bootstrap-servers: "localhost:9092"
+    root: INFO
+    ru.yandex.practicum: INFO
+    org.springframework: INFO
 
 eureka:
   client:
