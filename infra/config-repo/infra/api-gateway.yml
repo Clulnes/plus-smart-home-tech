@@ -2,6 +2,8 @@ server:
   port: 8080
 
 spring:
+  main:
+    web-application-type: reactive
   cloud:
     gateway:
       discovery:
@@ -48,10 +50,15 @@ spring:
                   firstBackoff: 100ms
                   maxBackoff: 500ms
 
-        - id: product-service
+        - id: product-service-products
           uri: lb://product-service
           predicates:
-            - Path=/api/products/**,/api/categories/**
+            - Path=/api/products/**
+
+        - id: product-service-categories
+          uri: lb://product-service
+          predicates:
+            - Path=/api/categories/**
 
         - id: inventory-service-read
           uri: lb://inventory-service
