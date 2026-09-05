@@ -4,7 +4,11 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
-@FeignClient(name = "inventory-service", path = "/api/inventory")
+@FeignClient(
+        name = "inventory-service",
+        path = "/api/inventory",
+        fallbackFactory = InventoryClientFallbackFactory.class
+)
 public interface InventoryClient {
     @PostMapping("/reserve")
     ReserveClientResponse reserveStock(@RequestBody ReserveClientRequest request);

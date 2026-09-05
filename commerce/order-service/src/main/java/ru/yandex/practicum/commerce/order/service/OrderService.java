@@ -5,17 +5,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.yandex.practicum.commerce.order.client.InventoryClient;
-import ru.yandex.practicum.commerce.order.client.ProductClient;
-import ru.yandex.practicum.commerce.order.client.ProductClientDto;
-import ru.yandex.practicum.commerce.order.client.ReserveClientRequest;
-import ru.yandex.practicum.commerce.order.client.ReserveClientResponse;
-import ru.yandex.practicum.commerce.order.dto.CreateOrderRequest;
-import ru.yandex.practicum.commerce.order.dto.OrderDto;
-import ru.yandex.practicum.commerce.order.dto.OrderItemDto;
-import ru.yandex.practicum.commerce.order.dto.OrderItemRequest;
+import ru.yandex.practicum.commerce.order.client.*;
+import ru.yandex.practicum.commerce.order.dto.*;
+import ru.yandex.practicum.commerce.order.exception.InventoryServiceUnavailableException;
 import ru.yandex.practicum.commerce.order.exception.NotFoundException;
 import ru.yandex.practicum.commerce.order.exception.OrderProcessingException;
+import ru.yandex.practicum.commerce.order.exception.ProductServiceUnavailableException;
 import ru.yandex.practicum.commerce.order.model.OrderItem;
 import ru.yandex.practicum.commerce.order.model.Order;
 import ru.yandex.practicum.commerce.order.repository.OrderRepository;
@@ -60,79 +55,90 @@ public class OrderService {
                 ));
 
         Map<Long, ProductClientDto> productDataMap = new HashMap<>();
+        boolean isDegraded = false;
+        String degradationReason = null;
 
         for (Long productId : productQuantities.keySet()) {
-            ProductClientDto product;
             try {
-                product = productClient.getProductById(productId);
+                ProductClientDto product = productClient.getProductById(productId);
+                if (product == null || Boolean.FALSE.equals(product.active())) {
+                    throw new OrderProcessingException("Product is unavailable or inactive: " + productId);
+                }
+                productDataMap.put(productId, product);
+            } catch (ProductServiceUnavailableException ex) {
+                log.warn("Catalog unavailable, degraded mode activated for order");
+                isDegraded = true;
+                degradationReason = "Product service temporarily unreachable";
             } catch (FeignException.NotFound ex) {
                 throw new OrderProcessingException("Product not found in catalog: " + productId);
-            } catch (Exception ex) {
-                throw new OrderProcessingException("Failed to retrieve product data for ID " + productId);
             }
-
-            if (product == null || Boolean.FALSE.equals(product.active())) {
-                throw new OrderProcessingException("Product is unavailable or inactive: " + productId);
-            }
-            productDataMap.put(productId, product);
         }
 
         List<ReserveClientRequest> successfulReservations = new ArrayList<>();
-
-        try {
-            for (Map.Entry<Long, Integer> entry : productQuantities.entrySet()) {
-                ReserveClientRequest reserveReq = new ReserveClientRequest(entry.getKey(), entry.getValue());
-                ReserveClientResponse response = inventoryClient.reserveStock(reserveReq);
-                if (response == null || !response.success()) {
-                    throw new OrderProcessingException("Insufficient stock for product ID: " + entry.getKey());
+        if (!isDegraded) {
+            try {
+                for (Map.Entry<Long, Integer> entry : productQuantities.entrySet()) {
+                    ReserveClientRequest reserveReq = new ReserveClientRequest(entry.getKey(), entry.getValue());
+                    ReserveClientResponse response = inventoryClient.reserveStock(reserveReq);
+                    if (response == null || !response.success()) {
+                        throw new OrderProcessingException("Insufficient stock for product ID: " + entry.getKey());
+                    }
+                    successfulReservations.add(reserveReq);
                 }
-                successfulReservations.add(reserveReq);
-            }
-        } catch (Exception ex) {
-            log.warn("Reservation failed, triggering compensation for {} items", successfulReservations.size());
-            for (ReserveClientRequest rollback : successfulReservations) {
-                try {
-                    inventoryClient.releaseStock(rollback);
-                } catch (Exception releaseEx) {
-                    log.error("Failed to release reservation for product: {}", rollback.productId(), releaseEx);
+            } catch (InventoryServiceUnavailableException ex) {
+                log.warn("Inventory unavailable, degraded mode activated for order");
+                isDegraded = true;
+                degradationReason = "Inventory service temporarily unreachable";
+            } catch (Exception ex) {
+                log.warn("Reservation business failure, releasing {} items", successfulReservations.size());
+                for (ReserveClientRequest rollback : successfulReservations) {
+                    try {
+                        inventoryClient.releaseStock(rollback);
+                    } catch (Exception releaseEx) {
+                        log.error("Failed to release reservation for product ID={}", rollback.productId(), releaseEx);
+                    }
                 }
+                if (ex instanceof OrderProcessingException) {
+                    throw (OrderProcessingException) ex;
+                }
+                throw new OrderProcessingException("Failed to reserve stock: " + ex.getMessage());
             }
-            if (ex instanceof OrderProcessingException) {
-                throw (OrderProcessingException) ex;
-            }
-            throw new OrderProcessingException("Failed to reserve stock: " + ex.getMessage());
         }
 
-        return saveOrderInDb(req, productDataMap);
+        return saveOrderInDb(req, productDataMap, isDegraded, degradationReason);
     }
 
     @Transactional
-    public OrderDto saveOrderInDb(CreateOrderRequest req, Map<Long, ProductClientDto> productDataMap) {
+    public OrderDto saveOrderInDb(CreateOrderRequest req, Map<Long, ProductClientDto> productDataMap,
+                                  boolean isDegraded, String degradationReason) {
         BigDecimal total = BigDecimal.ZERO;
 
         Order order = new Order();
         order.setCustomerName(req.customerName());
         order.setCustomerEmail(req.customerEmail());
-        order.setStatus("CONFIRMED");
-        order.setStatusDetails("Order confirmed and inventory reserved");
+        order.setStatus(isDegraded ? "PENDING_CONFIRMATION" : "CONFIRMED");
+        order.setStatusDetails(isDegraded ? degradationReason : "Order confirmed and inventory reserved");
         order.setCreatedAt(LocalDateTime.now());
 
         for (OrderItemRequest itemReq : req.items()) {
             ProductClientDto product = productDataMap.get(itemReq.productId());
-            BigDecimal itemTotal = product.price().multiply(BigDecimal.valueOf(itemReq.quantity()));
+            BigDecimal price = (product != null && product.price() != null) ? product.price() : BigDecimal.ZERO;
+            String name = (product != null && product.name() != null) ? product.name() : "Товар #"
+                    + itemReq.productId() + " (ожидает проверки)";
+
+            BigDecimal itemTotal = price.multiply(BigDecimal.valueOf(itemReq.quantity()));
             total = total.add(itemTotal);
 
             OrderItem item = new OrderItem();
             item.setProductId(itemReq.productId());
-            item.setProductName(product.name());
+            item.setProductName(name);
             item.setQuantity(itemReq.quantity());
-            item.setPrice(product.price());
+            item.setPrice(price);
             order.bindItem(item);
         }
 
         order.setTotalPrice(total);
-        Order saved = orderRepository.save(order);
-        return toDto(saved);
+        return toDto(orderRepository.save(order));
     }
 
     public OrderDto toDto(Order o) {
